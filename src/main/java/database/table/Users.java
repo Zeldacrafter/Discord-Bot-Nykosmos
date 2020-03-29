@@ -3,7 +3,6 @@ package database.table;
 public class Users extends BaseCols {
     public static final String TABLE_NAME = "Users";
 
-    public static final String USER_ID = "UserID";
     public static final String USERNAME = "Username";
     public static final String DISCRIMINATOR = "Discriminator";
 
@@ -11,8 +10,7 @@ public class Users extends BaseCols {
             "CREATE TABLE IF NOT EXISTS " +
                     TABLE_NAME +
                     "( " +
-                    _ID + " INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
-                    USER_ID + " INTEGER NOT NULL, " +
+                    _ID + " INTEGER NOT NULL PRIMARY KEY, " +
                     USERNAME + " TEXT, " +
                     DISCRIMINATOR + " INTEGER"+
                     ")";

@@ -1,10 +1,14 @@
+import bot.Command;
+import bot.Commands;
 import database.DBHelper;
 import discord4j.core.DiscordClient;
 import discord4j.core.DiscordClientBuilder;
 import discord4j.core.event.domain.lifecycle.ReadyEvent;
 import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.event.domain.message.ReactionAddEvent;
+import discord4j.core.object.entity.Channel;
 import discord4j.core.object.entity.Message;
+import discord4j.core.object.entity.MessageChannel;
 import discord4j.core.object.entity.User;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -20,35 +24,12 @@ public class Main {
 
     private static final Map<String, Command> commands = new HashMap<>();
 
+
     private static void initCommands() {
-        commands.put("ping", event -> event.getMessage().getChannel()
-                     .flatMap(channel -> channel.createMessage("Pong!"))
-                     .then());
-
-        commands.put("register", event -> {
-            Optional<User> userOp = event.getMessage().getAuthor();
-            assert(userOp.isPresent());
-            User user = userOp.get();
-
-            String msg;
-
-            try {
-                boolean alreadyExists = DBHelper.addUser(user);
-                if(alreadyExists) {
-                    msg = "User " + user.getUsername() + "#" + user.getDiscriminator() + " already registered!";
-                } else {
-                    msg = "User " + user.getUsername() + "#" + user.getDiscriminator() + " added successfully!";
-                }
-            } catch (SQLException e) {
-                msg = "Error adding user. Got exception " + e.getMessage();
-            }
-
-            final String m = msg; //FIXME: Get rid of this.
-            return event.getMessage().getChannel()
-                .flatMap(channel -> channel.createMessage(m))
-                .then();
-        });
+        commands.put("register", Commands::commandRegister);
+        commands.put("setupSession", Commands::commandSetupSession);
     }
+
 
     public static void main(String[] args) {
         DBHelper.createTables();
@@ -66,6 +47,7 @@ public class Main {
             .subscribe(Main::evalAddReaction);
 
         client.getEventDispatcher().on(MessageCreateEvent.class)
+            .filter(event -> channelValid(event.getMessage().getChannel()))
             .flatMap(event -> Mono.justOrEmpty(event.getMessage().getContent())
               .flatMap(content -> Flux.fromIterable(commands.entrySet())
                .filter(entry -> content.startsWith('!' + entry.getKey()))
@@ -80,7 +62,19 @@ public class Main {
         client.login().block();
     }
 
-    static void evalAddReaction(ReactionAddEvent event) {
+    private static boolean channelValid(Mono<MessageChannel> channel) {
+        Channel c = channel.block();
+        if(c == null)
+            return false;
+        if(c.getType() == Channel.Type.DM)
+            return true; //Private channels are always okay
+
+        // FIXME: We might need a better solution long term.
+        //        Hardcoding this is temporary.
+        return PrivateData.BOT_CHANNEL.equals(c.getId().asString());
+    }
+
+    private static void evalAddReaction(ReactionAddEvent event) {
         User user = event.getUser().block();
         Message m = event.getMessage().block();
 

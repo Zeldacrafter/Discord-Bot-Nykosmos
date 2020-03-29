@@ -1,5 +1,6 @@
 package database;
 
+import database.table.Session;
 import database.table.Users;
 import discord4j.core.object.entity.User;
 
@@ -11,27 +12,43 @@ public class DBHelper {
 
     private static Connection connection;
 
+    public static boolean userExists(String id) throws SQLException {
+        if(connection == null)
+            connect();
+
+        String qry = "SELECT 1 FROM " + Users.TABLE_NAME + " WHERE " + Users._ID + " = ?";
+        PreparedStatement pStm = connection.prepareStatement(qry);
+        pStm.setString(1, id);
+
+        ResultSet rs = pStm.executeQuery();
+        return rs.next();
+    }
+
+    public static boolean hasActiveSession(User user) throws SQLException {
+        String qry = "SELECT 1 FROM " + Session.TABLE_NAME +
+                " WHERE " + Session.DM_ID + " = ? AND" +
+                " NOT " + Session.TABLE_NAME + "." + Session.STATUS + " = ?";
+
+        PreparedStatement pStm = connection.prepareStatement(qry);
+        pStm.setString(1, user.getId().asString());
+        pStm.setInt(2, Session.SessionStatus.FINISHED.getVal());
+        ResultSet rs = pStm.executeQuery();
+        return rs.next();
+    }
+
     public static boolean addUser(User user) throws SQLException {
         if(connection == null)
             connect();
 
-        String qry = "SELECT 1 FROM " + Users.TABLE_NAME + " WHERE " +
-                Users.USERNAME + " = ? AND " +
-                Users.DISCRIMINATOR + " = ?";
-        PreparedStatement pStm = connection.prepareStatement(qry);
-        pStm.setString(1, user.getUsername());
-        pStm.setInt(2, Integer.parseInt(user.getDiscriminator()));
-
-        ResultSet rs = pStm.executeQuery();
-        if(rs.next())
+        if(userExists(user.getId().asString()))
             return true;
-        rs.close();
 
-        qry = "INSERT INTO " + Users.TABLE_NAME + "(" +
-                Users.USER_ID + ", " +
+
+        String qry = "INSERT INTO " + Users.TABLE_NAME + "(" +
+                Users._ID + ", " +
                 Users.USERNAME + ", " +
                 Users.DISCRIMINATOR + ") VALUES(?, ?, ?)";
-        pStm = connection.prepareStatement(qry);
+        PreparedStatement pStm = connection.prepareStatement(qry);
         pStm.setString(1, user.getId().asString());
         pStm.setString(2, user.getUsername());
         pStm.setString(3, user.getDiscriminator());
@@ -40,14 +57,32 @@ public class DBHelper {
         return false;
     }
 
+    public static boolean createSession(User usr) throws SQLException {
+        if(connection == null)
+            connect();
+
+        if(hasActiveSession(usr))
+            return false;
+
+        String qry = "INSERT INTO " + Session.TABLE_NAME + "(" +
+                Session.DM_ID + ", " +
+                Session.STATUS + ") VALUES(?, ?)";
+        PreparedStatement pStm = connection.prepareStatement(qry);
+        pStm.setString(1, usr.getId().asString());
+        pStm.setInt(2, Session.SessionStatus.START.getVal());
+        pStm.execute(); // TODO: Use return value.
+
+        return true;
+    }
+
     public static void createTables() {
         if(connection == null)
             connection = connect();
 
         try {
             Statement stm = connection.createStatement();
-            stm.setQueryTimeout(30);
             stm.execute(Users.SQL_CREATE_TABLE);
+            stm.execute(Session.SQL_CREATE_TABLE);
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -69,19 +104,6 @@ public class DBHelper {
             connection = DriverManager.getConnection("jdbc:sqlite:" + DB_NAME);
             Statement statement = connection.createStatement();
             statement.setQueryTimeout(30);
-
-            /*
-            statement.executeUpdate("drop table if exists person");
-            statement.executeUpdate("create table person (id integer, name string)");
-            statement.executeUpdate("insert into person values(1, 'leo')");
-            statement.executeUpdate("insert into person values(2, 'yui')");
-            ResultSet rs = statement.executeQuery("select * from person");
-            while(rs.next()) {
-                // read the result set
-                System.out.println("name = " + rs.getString("name"));
-                System.out.println("id = " + rs.getInt("id"));
-            }
-             */
         } catch(SQLException e) {
             // if the error message is "out of memory",
             // it probably means no database file is found
@@ -89,4 +111,5 @@ public class DBHelper {
         }
         return connection;
     }
+
 }
