@@ -28,6 +28,7 @@ public class Main {
     private static void initCommands() {
         commands.put("register", Commands::commandRegister);
         commands.put("setupSession", Commands::commandSetupSession);
+        commands.put("playerCount", Commands::commandSpecifyPlayerCount);
     }
 
 

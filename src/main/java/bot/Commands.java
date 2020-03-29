@@ -1,6 +1,7 @@
 package bot;
 
 import database.DBHelper;
+import database.table.Session;
 import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.entity.User;
 import reactor.core.publisher.Mono;
@@ -34,7 +35,7 @@ public class Commands {
             return usr.getPrivateChannel()
                     .flatMap(channel -> channel.createMessage(
                             "Session registered successfully!\n" +
-                            "Please specify how many players you want to have in your name with '!players #'"
+                            "Please specify how many players you want to have in your name with '!playerCount #'"
                     ))
                     .then();
 
@@ -46,6 +47,62 @@ public class Commands {
         }
 
     }
+
+    public static Mono<Void> commandSpecifyPlayerCount(MessageCreateEvent event) {
+
+        User usr = event.getMessage().getAuthor().get();
+
+        try {
+            System.out.println("Before session status");
+            Session.SessionStatus status = DBHelper.getSessionState(usr);
+
+            System.out.println("Got session status " + status);
+            if(status != Session.SessionStatus.START) {
+                return event.getMessage().getChannel()
+                        .flatMap(channel -> channel.createMessage(
+                                "You cannot specify a player count right now!"
+                        ))
+                        .then();
+            }
+
+            String c = event.getMessage().getContent().get()
+                    .substring("!playerCount ".length()).trim();
+
+            try {
+                int playerCount = Integer.parseInt(c);
+                if(playerCount < 1) {
+                    return event.getMessage().getChannel()
+                            .flatMap(channel -> channel.createMessage(
+                                    "The number of players must be greater than 0. >:("
+                            ))
+                            .then();
+                }
+                DBHelper.updatePlayerCount(usr, playerCount);
+
+                return event.getMessage().getChannel()
+                        .flatMap(channel -> channel.createMessage(
+                                "Successfully specified the number of players"
+                        ))
+                        .then();
+
+            } catch (NumberFormatException e) {
+                return event.getMessage().getChannel()
+                        .flatMap(channel -> channel.createMessage(
+                                "'" + c + "' is not a number!"
+                        ))
+                        .then();
+            }
+
+        } catch (SQLException e) {
+            return event.getMessage().getChannel()
+                    .flatMap(channel -> channel.createMessage(
+                            "SQL error while trying to specify player count. Got error message\n"
+                            + e.getMessage()
+                    ))
+                    .then();
+        }
+    }
+
 
     public static Mono<Void> commandRegister(MessageCreateEvent event) {
         Optional<User> userOp = event.getMessage().getAuthor();

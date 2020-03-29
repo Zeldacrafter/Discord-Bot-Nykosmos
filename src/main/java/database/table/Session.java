@@ -7,7 +7,8 @@ public class Session extends BaseCols {
         PLAYER_COUNT_KNOWN(1),
         TIME_KNOWN(2),
         VOTING(3),
-        FINISHED(4);
+        FINISHED(4),
+        INVALID(5);
 
         private int val;
         private SessionStatus(int val) {
@@ -22,6 +23,7 @@ public class Session extends BaseCols {
     public static final String TABLE_NAME = "Session";
 
     public static final String DM_ID = "DmId";
+    public static final String PLAYER_COUNT = "PlayerCount";
     public static final String STATUS = "Status";
     public static final String PLAY_DATE = "PlayDate";
 
@@ -31,6 +33,7 @@ public class Session extends BaseCols {
                     "( " +
                     _ID + " INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
                     DM_ID + " INTEGER NOT NULL, " +
+                    PLAYER_COUNT + " INTEGER, " +
                     STATUS + " INTEGER, " +
                     PLAY_DATE + " DATE, " +
                     "FOREIGN KEY (" + DM_ID + ") REFERENCES " +

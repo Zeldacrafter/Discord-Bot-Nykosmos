@@ -24,8 +24,11 @@ public class DBHelper {
         return rs.next();
     }
 
-    public static boolean hasActiveSession(User user) throws SQLException {
-        String qry = "SELECT 1 FROM " + Session.TABLE_NAME +
+    public static Session.SessionStatus getSessionState(User user) throws SQLException {
+        if (connection == null)
+            connect();
+
+        String qry = "SELECT " + Session.STATUS + " FROM " + Session.TABLE_NAME +
                 " WHERE " + Session.DM_ID + " = ? AND" +
                 " NOT " + Session.TABLE_NAME + "." + Session.STATUS + " = ?";
 
@@ -33,7 +36,15 @@ public class DBHelper {
         pStm.setString(1, user.getId().asString());
         pStm.setInt(2, Session.SessionStatus.FINISHED.getVal());
         ResultSet rs = pStm.executeQuery();
-        return rs.next();
+
+        if (!rs.next())
+            return Session.SessionStatus.INVALID;
+        else
+            return Session.SessionStatus.values()[rs.getInt(Session.STATUS)];
+    }
+
+    public static boolean hasActiveSession(User user) throws SQLException {
+        return getSessionState(user) != Session.SessionStatus.INVALID;
     }
 
     public static boolean addUser(User user) throws SQLException {
@@ -112,4 +123,24 @@ public class DBHelper {
         return connection;
     }
 
+    public static boolean updatePlayerCount(User usr, int playerCount) throws SQLException {
+        if(connection == null)
+            connect();
+
+        Session.SessionStatus status = getSessionState(usr);
+        if(status != Session.SessionStatus.START)
+            return false;
+
+        String qry = "UPDATE " + Session.TABLE_NAME +
+                " SET " + Session.PLAYER_COUNT + " = ? " +
+                "WHERE " + Session.DM_ID + " = ? AND " +
+                Session.STATUS + " = ?";
+        PreparedStatement pStm = connection.prepareStatement(qry);
+        pStm.setInt(1, playerCount);
+        pStm.setString(2, usr.getId().asString());
+        pStm.setInt(3, Session.SessionStatus.START.getVal());
+        pStm.execute();
+
+        return true;
+    }
 }
