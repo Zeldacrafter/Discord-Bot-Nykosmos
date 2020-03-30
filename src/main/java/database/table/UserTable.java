@@ -77,4 +77,30 @@ public class UserTable extends BaseCols {
                          user.getUsername(),
                          Integer.parseInt(user.getDiscriminator()));
     }
+
+    public static UserTable getUserWithId(String id) throws SQLException {
+        Connection conn = DBHelper.getConnection();
+
+        String query = "SELECT " + USERNAME + ", " + DISCRIMINATOR +
+                " FROM " + TABLE_NAME + " WHERE " + _ID + " = ?";
+        PreparedStatement pStm = conn.prepareStatement(query);
+        pStm.setString(1, id);
+        ResultSet rs = pStm.executeQuery();
+        if(!rs.next())
+            return null; //User doesnt exist.
+        String username = rs.getString(USERNAME);
+        int discriminator = rs.getInt(DISCRIMINATOR);
+
+        conn.close();
+
+        return new UserTable(id, username, discriminator);
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public int getDiscriminator() {
+        return discriminator;
+    }
 }

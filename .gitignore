@@ -1,6 +1,7 @@
-PrivateData.java
+Main.PrivateData.java
 gradle
 build
 .idea
 .gradle
 *.db
+/src/main/java/Main/PrivateData.java
