@@ -26,9 +26,15 @@ public class Main {
 
 
     private static void initCommands() {
-        commands.put("register", Commands::commandRegister);
-        commands.put("setupSession", Commands::commandSetupSession);
-        commands.put("playerCount", Commands::commandSpecifyPlayerCount);
+        commands.put("register", event -> event.getMessage().getChannel()
+                .filter(msgChannel -> msgChannel.getType() != Channel.Type.DM)
+                .flatMap(a -> Commands.commandRegister(event)));
+        commands.put("setupSession", event -> event.getMessage().getChannel()
+            .filter(msgChannel -> msgChannel.getType() != Channel.Type.DM)
+            .flatMap(a -> Commands.commandSetupSession(event)));
+        commands.put("playerCount", event -> event.getMessage().getChannel()
+            .filter(msgChannel -> msgChannel.getType() == Channel.Type.DM)
+            .flatMap(a -> Commands.commandSpecifyPlayerCount(event)));
     }
 
 

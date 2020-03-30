@@ -1,8 +1,10 @@
 package bot;
 
-import database.DBHelper;
-import database.table.Session;
+import database.table.SessionTable;
+import database.table.UserTable;
 import discord4j.core.event.domain.message.MessageCreateEvent;
+import discord4j.core.object.entity.MessageChannel;
+import discord4j.core.object.entity.PrivateChannel;
 import discord4j.core.object.entity.User;
 import reactor.core.publisher.Mono;
 
@@ -12,117 +14,109 @@ import java.util.Optional;
 public class Commands {
 
     public static Mono<Void> commandSetupSession(MessageCreateEvent event) {
+        Mono<MessageChannel> channel = event.getMessage().getChannel();
+
         if(!event.getMessage().getAuthor().isPresent())
-            return null;
+            return makeMsg(channel, "Could not find author in method 'commandSetupSession'");
 
-        User usr = event.getMessage().getAuthor().get();
+        User user = event.getMessage().getAuthor().get();
         try {
-            if(!DBHelper.userExists(usr.getId().asString())) {
-                return event.getMessage().getChannel()
-                        .flatMap(channel -> channel.createMessage(
-                                "You (" + usr.getUsername() + ") seem to not be registerd.\n" +
-                                        "Did you try '!register'"))
-                        .then();
-            }
+            if(!UserTable.userWithIdExists(user.getId().asString()))
+                return makeMsg(channel,
+                        "Cannot find user '" + user.getUsername() + "#" + user.getDiscriminator() + "'.\n" +
+                                        "Are you registered via '!register'?");
 
-            if(!DBHelper.createSession(usr)) {
-                return event.getMessage().getChannel()
-                        .flatMap(channel -> channel.createMessage(
-                                "Something went wrong!\nDo you already have an active session?"
-                        )).then();
-            }
+            SessionTable insertedSession = SessionTable.createSession(user.getId().asString());
+            if(insertedSession == null)
+                return makeMsg(channel,
+                        "Cannot create session. Do you already have an active session?");
 
-            return usr.getPrivateChannel()
-                    .flatMap(channel -> channel.createMessage(
-                            "Session registered successfully!\n" +
-                            "Please specify how many players you want to have in your name with '!playerCount #'"
-                    ))
-                    .then();
+            return makePrivMsg(user.getPrivateChannel(),
+                    "Session registered successfully!\n" +
+                            "I need a few more information about the session:\n" +
+                            "Player Count: Specifiy with '!playerCount #' (i. e. '!playerCount 4')"
+                    );
 
         } catch (SQLException e) {
-            String msg = "Error while creating new session!\nGot exception " + e.getMessage();
-            return event.getMessage().getChannel()
-                    .flatMap(channel -> channel.createMessage(msg))
-                    .then();
+            return makeMsg(channel,
+                    "SQL error while creating new session!\nGot exception " + e.getMessage());
         }
 
     }
 
     public static Mono<Void> commandSpecifyPlayerCount(MessageCreateEvent event) {
+        Mono<MessageChannel> channel = event.getMessage().getChannel();
 
-        User usr = event.getMessage().getAuthor().get();
+        if(!event.getMessage().getAuthor().isPresent())
+            return makeMsg(channel, "Could not find author in method 'commandSpecifyPlayerCount'");
+
+        User user = event.getMessage().getAuthor().get();
 
         try {
-            System.out.println("Before session status");
-            Session.SessionStatus status = DBHelper.getSessionState(usr);
+            SessionTable currSession = SessionTable.getActiveSession(user.getId().asString());
 
-            System.out.println("Got session status " + status);
-            if(status != Session.SessionStatus.START) {
-                return event.getMessage().getChannel()
-                        .flatMap(channel -> channel.createMessage(
-                                "You cannot specify a player count right now!"
-                        ))
-                        .then();
-            }
+            if(currSession == null)
+                return makeMsg(channel,
+                    "Could not find session. Did you already register a" +
+                            "new session with '!setupSession'?");
+
+            if(!SessionTable.PHASE_SETUP.equals(currSession.getPhase()))
+                return makeMsg(channel,
+                        "Your session is not currently in planning phase.\n" +
+                        "You cannot specify a player count now.");
+
+            if(!event.getMessage().getContent().isPresent())
+                return makeMsg(channel,
+                        "Could not find message content in'commandSpecifyPlayerCount'");
 
             String c = event.getMessage().getContent().get()
-                    .substring("!playerCount ".length()).trim();
-
+                    .substring("!playerCount".length()).trim();
             try {
                 int playerCount = Integer.parseInt(c);
-                if(playerCount < 1) {
-                    return event.getMessage().getChannel()
-                            .flatMap(channel -> channel.createMessage(
-                                    "The number of players must be greater than 0. >:("
-                            ))
-                            .then();
-                }
-                DBHelper.updatePlayerCount(usr, playerCount);
+                if(playerCount < 1)
+                    return makeMsg(channel,
+                            "The number of players must be greater than 0. >:(");
 
-                return event.getMessage().getChannel()
-                        .flatMap(channel -> channel.createMessage(
-                                "Successfully specified the number of players"
-                        ))
-                        .then();
+                currSession.setPlayerCount(playerCount);
+
+                return makeMsg(channel, "Successfully set player count to " + playerCount);
 
             } catch (NumberFormatException e) {
-                return event.getMessage().getChannel()
-                        .flatMap(channel -> channel.createMessage(
-                                "'" + c + "' is not a number!"
-                        ))
-                        .then();
+                return makeMsg(channel, "Could not read number '" + c + "'!");
             }
 
         } catch (SQLException e) {
-            return event.getMessage().getChannel()
-                    .flatMap(channel -> channel.createMessage(
+            return makeMsg(channel,
                             "SQL error while trying to specify player count. Got error message\n"
-                            + e.getMessage()
-                    ))
-                    .then();
+                            + e.getMessage());
         }
     }
 
-
     public static Mono<Void> commandRegister(MessageCreateEvent event) {
+        Mono<MessageChannel> channel = event.getMessage().getChannel();
         Optional<User> userOp = event.getMessage().getAuthor();
-        assert(userOp.isPresent());
+        if(!userOp.isPresent())
+            return makeMsg(channel, "Could not find message author.");
+
         User user = userOp.get();
-
-        String msg;
         try {
-            boolean alreadyExists = DBHelper.addUser(user);
-            if(alreadyExists)
-                msg = "User " + user.getUsername() + "#" + user.getDiscriminator() + " already registered!";
+            UserTable insertedUser = UserTable.insert(user);
+            if(insertedUser == null)
+                return makeMsg(channel,
+                        "User " + user.getUsername() + "#" + user.getDiscriminator() + " already registered!");
             else
-                msg = "User " + user.getUsername() + "#" + user.getDiscriminator() + " added successfully!";
+                return makeMsg(channel,
+                        "User " + user.getUsername() + "#" + user.getDiscriminator() + " added successfully!");
         } catch (SQLException e) {
-            msg = "Error adding user. Got exception " + e.getMessage();
+            return makeMsg(channel, "SQL error adding user. Got exception " + e.getMessage());
         }
+    }
 
-        final String m = msg; //FIXME: Get rid of this.
-        return event.getMessage().getChannel()
-                .flatMap(channel -> channel.createMessage(m))
-                .then();
+    // FIXME: Merge with makeMsg
+    private static Mono<Void> makePrivMsg(Mono<PrivateChannel> channel, String message) {
+        return channel.flatMap(c -> c.createMessage(message)).then();
+    }
+    private static Mono<Void> makeMsg(Mono<MessageChannel> channel, String message) {
+        return channel.flatMap(c -> c.createMessage(message)).then();
     }
 }
