@@ -2,6 +2,7 @@ package Main;
 
 import bot.Command;
 import bot.Commands;
+import bot.VotingCloseTimer;
 import database.DBHelper;
 import database.table.VoteTable;
 import database.table.SessionTable;
@@ -48,6 +49,9 @@ public class Main {
         commands.put("sessionDate", event -> event.getMessage().getChannel()
                 .filter(msgChannel -> msgChannel.getType() == Channel.Type.DM)
                 .flatMap(a -> Commands.commandSessionDate(event)));
+        commands.put("voteEnd", event -> event.getMessage().getChannel()
+                .filter(msgChannel -> msgChannel.getType() == Channel.Type.DM)
+                .flatMap(a -> Commands.commandVoteEnd(event)));
         commands.put("startVoting", event -> event.getMessage().getChannel()
                 .filter(msgChannel -> msgChannel.getType() == Channel.Type.DM)
                 .flatMap(a -> Commands.commandStartVoting(event)));
@@ -57,34 +61,37 @@ public class Main {
 
     public static void main(String[] args) {
         DBHelper.createTables();
+        initCommands();
+        VotingCloseTimer.startVotingCloseTimers();
+        startClient();
+    }
 
+    private static void startClient() {
         DiscordClientBuilder builder = new DiscordClientBuilder(PrivateData.BOT_TOKEN);
         client = builder.build();
 
         client.getEventDispatcher().on(ReadyEvent.class)
-            .subscribe(event -> {
-                User self = event.getSelf();
-                System.out.println(String.format("Logged in as %s#%s", self.getUsername(), self.getDiscriminator()));
-            });
+                .subscribe(event -> {
+                    User self = event.getSelf();
+                    System.out.println(String.format("Logged in as %s#%s", self.getUsername(), self.getDiscriminator()));
+                });
 
         client.getEventDispatcher().on(ReactionAddEvent.class)
-            .subscribe(Main::evalAddReaction);
+                .subscribe(Main::evalAddReaction);
 
         client.getEventDispatcher().on(ReactionRemoveEvent.class)
-            .subscribe(Main::evalRemoveReaction);
+                .subscribe(Main::evalRemoveReaction);
 
         client.getEventDispatcher().on(MessageCreateEvent.class)
-            .filter(event -> channelValid(event.getMessage().getChannel()))
-            .flatMap(event -> Mono.justOrEmpty(event.getMessage().getContent())
-              .flatMap(content -> Flux.fromIterable(commands.entrySet())
-               .filter(entry -> content.startsWith('!' + entry.getKey()))
-               .flatMap(entry -> entry.getValue().execute(event))
-               .next()
-              )
-            )
-            .subscribe();
-
-        initCommands();
+                .filter(event -> channelValid(event.getMessage().getChannel()))
+                .flatMap(event -> Mono.justOrEmpty(event.getMessage().getContent())
+                        .flatMap(content -> Flux.fromIterable(commands.entrySet())
+                                .filter(entry -> content.startsWith('!' + entry.getKey()))
+                                .flatMap(entry -> entry.getValue().execute(event))
+                                .next()
+                        )
+                )
+                .subscribe();
 
         client.login().block();
     }

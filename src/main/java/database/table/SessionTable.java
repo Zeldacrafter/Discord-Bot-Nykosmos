@@ -1,9 +1,12 @@
 package database.table;
 
 import database.DBHelper;
+import jdk.vm.ci.meta.Local;
 
 import java.sql.*;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 
 import static java.time.temporal.ChronoUnit.DAYS;
@@ -22,6 +25,7 @@ public class SessionTable extends BaseCols {
     public static final String PHASE = "Phase";
     public static final String DM_COMMENT = "DmComment";
     public static final String VOTE_MESSAGE_ID = "VoteMessageId";
+    public static final String VOTE_END_DATETIME = "VoteEndDate";
 
     public static final String SQL_CREATE_TABLE =
             "CREATE TABLE IF NOT EXISTS " +
@@ -34,6 +38,7 @@ public class SessionTable extends BaseCols {
                     PHASE + " TEXT NOT NULL, " +
                     DM_COMMENT + " TEXT, " +
                     VOTE_MESSAGE_ID + " INTEGER, " +
+                    VOTE_END_DATETIME + " STRING, " +
                     "FOREIGN KEY (" + DM_ID + ") REFERENCES " +
                          UserTable.TABLE_NAME + "(" + UserTable._ID + ")" +
                     ")";
@@ -44,21 +49,23 @@ public class SessionTable extends BaseCols {
     private int id;
     private String dmId;
     private int playerCount; //-1 indicates an invalid playerCount.
-    private Date date;
+    private Date sessionDate;
     private String phase;
     private String dmComment;
     private String voteMsgId;
-    private Date voteUntil;
+    private LocalDateTime voteEndDateTime;
 
-    private SessionTable(int id, String dmId, int playerCount, Date date,
-                         String phase, String dmComment, String voteMsgId) {
+    private SessionTable(int id, String dmId, int playerCount, Date sessionDate,
+                         String phase, String dmComment, String voteMsgId,
+                         LocalDateTime voteEndDateTime) {
         this.id = id;
         this.dmId = dmId;
         this.playerCount = playerCount;
-        this.date = date;
+        this.sessionDate = sessionDate;
         this.phase = phase;
         this.dmComment = dmComment;
         this.voteMsgId = voteMsgId;
+        this.voteEndDateTime = voteEndDateTime;
     }
 
     /**
@@ -78,7 +85,8 @@ public class SessionTable extends BaseCols {
             return null;
         }
 
-        SessionTable newEntry = new SessionTable(-1, dmId, -1, null, PHASE_SETUP, null, null);
+        SessionTable newEntry = new SessionTable(-1, dmId, -1,
+                null, PHASE_SETUP, null, null, null);
         insert(newEntry);
 
         return newEntry;
@@ -91,7 +99,7 @@ public class SessionTable extends BaseCols {
         Connection conn = DBHelper.getConnection();
         String query = "SELECT " + _ID + ", " + PLAYER_COUNT + ", " + PLAY_DATE + ", " +
                                    PHASE + ", " + DM_COMMENT + ", " +
-                                   VOTE_MESSAGE_ID +
+                                   VOTE_MESSAGE_ID + ", " + VOTE_END_DATETIME +
                 " FROM " + TABLE_NAME +
                 " WHERE " + DM_ID + " = ? AND NOT " + PHASE + " = ?";
         PreparedStatement pStm = conn.prepareStatement(query);
@@ -107,9 +115,14 @@ public class SessionTable extends BaseCols {
         String phase = rs.getString(PHASE);
         String dmComment = rs.getString(DM_COMMENT);
         String voteMsgId = rs.getString(VOTE_MESSAGE_ID);
+        String voteEndString = rs.getString(VOTE_END_DATETIME);
+        LocalDateTime voteEndDate = null;
+        if(voteEndString != null)
+            voteEndDate = LocalDateTime.parse(voteEndString, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         rs.close();
 
-        SessionTable res = new SessionTable(id, dmId, playerCount, date, phase, dmComment, voteMsgId);
+        SessionTable res = new SessionTable(
+                id, dmId, playerCount, date, phase, dmComment, voteMsgId, voteEndDate);
 
         conn.close();
         return res;
@@ -126,7 +139,7 @@ public class SessionTable extends BaseCols {
         PreparedStatement pStm = conn.prepareStatement(query);
         pStm.setString(1, session.dmId);
         pStm.setInt(2, session.playerCount);
-        pStm.setDate(3, session.date);
+        pStm.setDate(3, session.sessionDate);
         pStm.setString(4, session.phase);
         pStm.execute();
 
@@ -136,7 +149,7 @@ public class SessionTable extends BaseCols {
     public static SessionTable getFromVoteMsgId(String msgId) throws SQLException {
         Connection conn = DBHelper.getConnection();
         String query = "SELECT " + _ID + ", " + DM_ID + ", " + PLAYER_COUNT + ", " + PLAY_DATE + ", " +
-                PHASE + ", " + DM_COMMENT +
+                PHASE + ", " + DM_COMMENT + ", " + VOTE_END_DATETIME +
                 " FROM " + TABLE_NAME +
                 " WHERE " + VOTE_MESSAGE_ID + " = ? AND " + PHASE + " = ?";
         PreparedStatement pStm = conn.prepareStatement(query);
@@ -153,12 +166,45 @@ public class SessionTable extends BaseCols {
         Date date = rs.getDate(PLAY_DATE);
         String phase = rs.getString(PHASE);
         String dmComment = rs.getString(DM_COMMENT);
-        rs.close();
+        String voteEndString = rs.getString(VOTE_END_DATETIME);
+        LocalDateTime voteEndDate = null;
+        if(voteEndString != null)
+            voteEndDate = LocalDateTime.parse(voteEndString, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
         SessionTable res = new SessionTable(id, dmId, playerCount, date, phase,
-                              dmComment, msgId);
+                              dmComment, msgId, voteEndDate);
 
         conn.close();
+        return res;
+    }
+
+    public static ArrayList<SessionTable> getSessionsByPhase(String phase) throws SQLException {
+        Connection conn = DBHelper.getConnection();
+        String query = "SELECT " + _ID + ", " + DM_ID + ", " + PLAYER_COUNT + ", " +
+                PLAY_DATE + ", " + DM_COMMENT + ", " +
+                VOTE_MESSAGE_ID + ", " + VOTE_END_DATETIME +
+                " FROM " + TABLE_NAME +
+                " WHERE " + PHASE + " = ?";
+        PreparedStatement pStm = conn.prepareStatement(query);
+        pStm.setString(1, phase);
+
+        ResultSet rs = pStm.executeQuery();
+        ArrayList<SessionTable> res = new ArrayList<>();
+        while(rs.next()) {
+            int id = rs.getInt(_ID);
+            String dmId = rs.getString(DM_ID);
+            int playerCount = rs.getInt(PLAYER_COUNT);
+            Date sessionDate = rs.getDate(PLAY_DATE);
+            String dmComment = rs.getString(DM_COMMENT);
+            String voteMsgId = rs.getString(VOTE_MESSAGE_ID);
+            String voteEndString = rs.getString(VOTE_END_DATETIME);
+            LocalDateTime voteEndDate = null;
+            if(voteEndString != null)
+                voteEndDate = LocalDateTime.parse(voteEndString, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+
+            res.add(new SessionTable(id, dmId, playerCount, sessionDate,
+                                     phase, dmComment, voteMsgId, voteEndDate));
+        }
         return res;
     }
 
@@ -224,20 +270,20 @@ public class SessionTable extends BaseCols {
         dmComment = comment;
     }
 
-    public void setDate(Date date) throws SQLException {
+    public void setSessionDate(Date sessionDate) throws SQLException {
         Connection conn = DBHelper.getConnection();
 
         String query = "UPDATE " + TABLE_NAME +
                 " SET " + PLAY_DATE + " = ? " +
                 "WHERE " + DM_ID + " = ?";
         PreparedStatement pStm = conn.prepareStatement(query);
-        pStm.setDate(1, date);
+        pStm.setDate(1, sessionDate);
         pStm.setString(2, dmId);
         pStm.execute();
 
         conn.close();
 
-        this.date = date;
+        this.sessionDate = sessionDate;
     }
 
     public void setPhase(String phase) throws SQLException {
@@ -272,8 +318,30 @@ public class SessionTable extends BaseCols {
         this.voteMsgId = msgId;
     }
 
+    public LocalDateTime getVoteEndDateTime() {
+        return voteEndDateTime;
+    }
+
+
+    public void setVoteEndDateTime(LocalDateTime voteEnd) throws SQLException {
+        Connection conn = DBHelper.getConnection();
+
+        String query = "UPDATE " + TABLE_NAME +
+                " SET " + VOTE_END_DATETIME + " = ? " +
+                "WHERE " + DM_ID + " = ?";
+        PreparedStatement pStm = conn.prepareStatement(query);
+        pStm.setString(1, voteEnd.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        pStm.setString(2, dmId);
+        pStm.execute();
+
+        conn.close();
+
+        this.voteEndDateTime = voteEnd;
+    }
+
     public boolean readyForVote() {
-        return playerCount > 0 && date != null && PHASE_SETUP.equals(phase);
+        return playerCount > 0 && sessionDate != null
+                && voteEndDateTime != null && PHASE_SETUP.equals(phase);
     }
 
     public int getId() {
@@ -283,15 +351,21 @@ public class SessionTable extends BaseCols {
     public String getSessionString() throws SQLException {
         if(PHASE_SETUP.equals(phase)) {
             String res = "Your session is currently being set up.\n\n";
-            if(playerCount <= 0 || date == null || dmComment == null)  {
+            if(playerCount <= 0 || sessionDate == null || dmComment == null || voteEndDateTime == null)  {
                 res += "I need a few more information:\n";
                 if(playerCount <= 0) {
                     res += "**Player Count**: How many players do you want?\n" +
                             "\tUse '!playerCount #' to set the player count.\n";
                 }
-                if(date == null) {
+                if(sessionDate == null) {
                     res += "**Date of the session**: When will the session take place?\n" +
                             "\tUse '!sessionDate YYYY-MM-DD' to set the date of play.\n";
+                }
+                if(voteEndDateTime == null) {
+                    res += "**Voting End**: How long do the players have to enter the raffle" +
+                            " before the players get decided?\n" +
+                            "\tUse '!voteEnd YYYY-MM-DD HH-mm' (i. e. '!voteDate 2020-05-27 13:30') " +
+                              "to set a date for when voting ends.\n";
                 }
                 if(dmComment == null) {
                     res += "**Comment** (Optional): Do you want to say anything in the " +
@@ -301,20 +375,32 @@ public class SessionTable extends BaseCols {
                 res += "\n";
             }
 
-            if(playerCount > 0 || date != null || dmComment != null) {
+            if(playerCount > 0 || sessionDate != null || dmComment != null || voteEndDateTime != null) {
                 res += "These are the information about the session you already entered:\n";
                 if(playerCount > 0) {
                     res += "**Player Count**: Your session will have up to " + playerCount + " players.\n" +
                             "\tTo change this use '!playerCount #'.\n";
                 }
-                if(date != null) {
-                    LocalDate localDate = date.toLocalDate();
-                    LocalDate now =LocalDate.now();
+                if(sessionDate != null) {
+                    LocalDate localDate = sessionDate.toLocalDate();
+                    LocalDate now = LocalDate.now();
 
                     res += "**Date of the session**: The session will take place at the date "
                             + localDate.getDayOfMonth() + "-" + localDate.getMonthValue() + "-" + localDate.getYear()
                             + ". This is in " + DAYS.between(now, localDate) + " Days.\n" +
                             "\tTo change this use '!sessionDate DD-MM-YYYY'.\n";
+                }
+                if(voteEndDateTime != null) {
+                    LocalDateTime now = LocalDateTime.now();
+
+                    res += "**Voting End**: Voting will end at the date " +
+                            String.format("%04d", voteEndDateTime.getYear()) + "-" +
+                            String.format("%02d", voteEndDateTime.getMonthValue()) + "-" +
+                            String.format("%02d", voteEndDateTime.getDayOfMonth()) + " at " +
+                            String.format("%02d", voteEndDateTime.getHour()) + ":" +
+                            String.format("%02d", voteEndDateTime.getMinute()) +
+                            ".\nThis is in " + DAYS.between(now, voteEndDateTime) + " Days.\n" +
+                            "\tTo change this use '!voteEnd YYYY-MM-DD HH:mm'\n";
                 }
                 if(dmComment != null) {
                     res += "**Comment**: The following comment will be sent to the players:\n" +
@@ -324,7 +410,7 @@ public class SessionTable extends BaseCols {
                 res += "\n";
             }
 
-            if(playerCount > 0 && date != null) {
+            if(playerCount > 0 && sessionDate != null && voteEndDateTime != null) {
                 res += "Everything seems to be set up! If you want to start voting use" +
                         " '!startVoting'. After you start the voting process the " +
                         "details you entered cannot be changed without creating a new session!\n\n";
@@ -338,10 +424,18 @@ public class SessionTable extends BaseCols {
                 return "DM with id " + dmId + " does not seem to exist.";
 
             String res = dm.getUsername() + "#" + dm.getDiscriminator() + " has planned a session! Hurray!\n" +
-                    "The session will take place on the " + date.toString() + " with space for " + playerCount + " players.\n" +
+                    "The session will take place on the " + sessionDate.toString() + " with space for " + playerCount + " players.\n" +
                     (dmComment == null ? "" : "Message from DM: \"" + dmComment + "\"\n") +
                     "To join the raffle react to this message with :white_check_mark: .\n" +
-                    "Also make sure that you are registered (!register in the bot channel).\n";
+                    "Voting will close on the date " +
+                    voteEndDateTime.getDayOfMonth() + "-" +
+                    voteEndDateTime.getMonthValue() + "-" +
+                    voteEndDateTime.getYear() + " at " +
+                    voteEndDateTime.getHour() + ":" + voteEndDateTime.getMinute() +
+                    ".\nThat is " + DAYS.between(LocalDateTime.now(), voteEndDateTime) + " days " +
+                    " from this message being posted.\n" +
+                    "Also make sure that you are registered (!register in the bot channel)." +
+                    "You may not be able to enter the raffle otherwise.\n";
 
             assert(id != -1);
             ArrayList<UserTable> votes = VoteTable.getVotes(id);
@@ -350,6 +444,8 @@ public class SessionTable extends BaseCols {
                 for(UserTable user : votes) {
                     res += "**" + user.getUsername() + "**\n";
                 }
+            } else {
+                res += "\nNobody has entered the raffle yet.\n";
             }
 
             return res;

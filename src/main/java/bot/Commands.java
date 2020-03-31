@@ -14,6 +14,9 @@ import reactor.core.publisher.Mono;
 
 import java.sql.Date;
 import java.sql.SQLException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Optional;
 
 public class Commands {
@@ -164,7 +167,7 @@ public class Commands {
             String dateString = event.getMessage().getContent().get().substring("!sessionDate".length()).trim();
             try {
                 Date currDate = Date.valueOf(dateString);
-                activeSession.setDate(currDate);
+                activeSession.setSessionDate(currDate);
                 return makeMsg(channel, activeSession.getSessionString());
             } catch (IllegalArgumentException a) {
                 return makeMsg(channel, "Date couldnt be read! Is your format 'YYYY-MM-DD'?");
@@ -177,7 +180,40 @@ public class Commands {
         }
     }
 
-    public static Mono<? extends Void> commandStartVoting(MessageCreateEvent event) {
+    public static Mono<Void> commandVoteEnd(MessageCreateEvent event) {
+        Mono<MessageChannel> channel = event.getMessage().getChannel();
+
+        if (!event.getMessage().getAuthor().isPresent())
+            return makeMsg(channel, "Could not find author in method 'commandVoteEnd'");
+
+        User user = event.getMessage().getAuthor().get();
+
+        try {
+            SessionTable activeSession = SessionTable.getActiveSession(user.getId().asString());
+            if (activeSession == null)
+                return makeMsg(channel, "You do not seem to have an active session!");
+
+            if(!event.getMessage().getContent().isPresent())
+                return makeMsg(channel, "Couldn't find message content.");
+
+            String dateString = event.getMessage().getContent().get().substring("!voteEnd".length()).trim();
+            try {
+                LocalDateTime dateTime = LocalDateTime.parse(dateString,
+                        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+                activeSession.setVoteEndDateTime(dateTime);
+                return makeMsg(channel, activeSession.getSessionString());
+            } catch (DateTimeParseException a) {
+                return makeMsg(channel, "Date/Time couldnt be read! Is your format 'YYYY-MM-DD HH:mm'?");
+            }
+
+        }catch (SQLException e) {
+            return makeMsg(channel,
+                    "SQL error while trying to set voting end date/time. Got error message\n"
+                            + e.getMessage());
+        }
+    }
+
+    public static Mono<Void> commandStartVoting(MessageCreateEvent event) {
         Mono<MessageChannel> channel = event.getMessage().getChannel();
 
         if (!event.getMessage().getAuthor().isPresent())
@@ -203,6 +239,7 @@ public class Commands {
                     message -> {
                         try {
                             activeSession.setVoteMsgId(message.getId().asString());
+                            new VotingCloseTimer(activeSession);
                         } catch (SQLException e) {
                             System.err.println("Could not save vote message id.");
                         }
@@ -235,6 +272,7 @@ public class Commands {
             return makeMsg(channel, "SQL error adding user. Got exception " + e.getMessage());
         }
     }
+
 
     // FIXME: Merge with makeMsg
     private static Mono<Void> makePrivMsg(Mono<PrivateChannel> channel, String message) {
