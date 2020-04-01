@@ -3,7 +3,6 @@ package Main;
 import bot.Command;
 import bot.Commands;
 import bot.VotingCloseTimer;
-import com.wl.ReservoirLottery;
 import database.DBHelper;
 import database.table.VoteTable;
 import database.table.SessionTable;
@@ -18,26 +17,28 @@ import discord4j.core.object.entity.Channel;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.MessageChannel;
 import discord4j.core.object.entity.User;
+import discord4j.core.object.util.Snowflake;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class Main {
 
     private static final Map<String, Command> commands = new HashMap<>();
 
     private static DiscordClient client;
+    private static MessageChannel botChannel;
+    private static MessageChannel sessionChannel;
 
     private static void initCommands() {
         commands.put("register", event -> event.getMessage().getChannel()
-                .filter(msgChannel -> msgChannel.getType() != Channel.Type.DM)
+                .filter(msgChannel -> PrivateData.BOT_CHANNEL.equals(msgChannel.getId().asString()))
                 .flatMap(a -> Commands.commandRegister(event)));
         commands.put("setupSession", event -> event.getMessage().getChannel()
-                .filter(msgChannel -> msgChannel.getType() != Channel.Type.DM)
+                .filter(msgChannel -> PrivateData.BOT_CHANNEL.equals(msgChannel.getId().asString()))
                 .flatMap(a -> Commands.commandSetupSession(event)));
         commands.put("playerCount", event -> event.getMessage().getChannel()
                 .filter(msgChannel -> msgChannel.getType() == Channel.Type.DM)
@@ -60,23 +61,19 @@ public class Main {
 
     }
 
-
     public static void main(String[] args) {
         DBHelper.createTables();
         initCommands();
         VotingCloseTimer.startVotingCloseTimers();
-
-        double[] weights = {0.2, 0.2, 0.2, 0.2, 0.2};
-        for(int i = 0; i < 10; ++i) {
-
-        }
-
         startClient();
     }
 
     private static void startClient() {
         DiscordClientBuilder builder = new DiscordClientBuilder(PrivateData.BOT_TOKEN);
         client = builder.build();
+
+        botChannel = (MessageChannel) client.getChannelById(Snowflake.of(PrivateData.BOT_CHANNEL)).block();
+        sessionChannel = (MessageChannel) client.getChannelById(Snowflake.of(PrivateData.SESSION_CHANNEL)).block();
 
         client.getEventDispatcher().on(ReadyEvent.class)
                 .subscribe(event -> {
@@ -148,7 +145,6 @@ public class Main {
     }
 
     private static void evalAddReaction(ReactionAddEvent event) {
-
         if(!"✅".equals(event.getEmoji().asUnicodeEmoji().get().getRaw())) //FIXME: Ugh, thats ugly
             return;
 
@@ -179,6 +175,14 @@ public class Main {
             System.out.println("SQL error when handling reaction event!");
         }
 
+    }
+
+    public static MessageChannel getBotChannel() {
+        return botChannel;
+    }
+
+    public static MessageChannel getSessionChannel() {
+        return sessionChannel;
     }
 
     public static DiscordClient getClient() {

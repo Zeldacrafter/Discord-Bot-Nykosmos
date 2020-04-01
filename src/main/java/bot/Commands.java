@@ -1,7 +1,6 @@
 package bot;
 
 import Main.Main;
-import Main.PrivateData;
 
 import database.table.SessionTable;
 import database.table.UserTable;
@@ -9,7 +8,6 @@ import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.entity.MessageChannel;
 import discord4j.core.object.entity.PrivateChannel;
 import discord4j.core.object.entity.User;
-import discord4j.core.object.util.Snowflake;
 import reactor.core.publisher.Mono;
 
 import java.sql.Date;
@@ -229,13 +227,11 @@ public class Commands {
             if (!activeSession.readyForVote())
                 return makeMsg(channel, "You did not enter the needed information yet!");
 
-            Mono<MessageChannel> c = Main.getClient().getChannelById(Snowflake.of(PrivateData.BOT_CHANNEL)).cast(MessageChannel.class);
-
             activeSession.setPhase(SessionTable.PHASE_VOTING);
 
             String sessionString = activeSession.getSessionString();
 
-            return c.flatMap(c1 -> c1.createMessage(sessionString)).flatMap(
+            return Main.getSessionChannel().createMessage(sessionString).map(
                     message -> {
                         try {
                             activeSession.setVoteMsgId(message.getId().asString());
@@ -243,7 +239,7 @@ public class Commands {
                         } catch (SQLException e) {
                             System.err.println("Could not save vote message id.");
                         }
-                        return Mono.just(message);
+                        return message;
                     }).then();
 
         }catch (SQLException e) {

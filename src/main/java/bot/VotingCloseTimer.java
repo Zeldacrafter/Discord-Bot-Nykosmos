@@ -6,6 +6,7 @@ import com.wl.ReservoirLottery;
 import database.table.SessionTable;
 import database.table.UserTable;
 import database.table.VoteTable;
+import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.entity.MessageChannel;
 import discord4j.core.object.util.Snowflake;
 import reactor.core.publisher.Mono;
@@ -67,10 +68,8 @@ public class VotingCloseTimer extends TimerTask {
 
             session.setPhase(SessionTable.PHASE_DONE);
 
-            Mono<MessageChannel> c = Main.getClient().getChannelById(Snowflake.of(PrivateData.BOT_CHANNEL)).cast(MessageChannel.class);
-
             String res = resString;
-            c.flatMap(channel -> channel.createMessage(res)).subscribe();
+            Main.getSessionChannel().createMessage(res).subscribe();
         } catch (SQLException e) {
             e.printStackTrace();
         }
