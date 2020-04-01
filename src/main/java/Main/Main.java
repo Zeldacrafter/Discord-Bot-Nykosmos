@@ -3,6 +3,7 @@ package Main;
 import bot.Command;
 import bot.Commands;
 import bot.VotingCloseTimer;
+import com.wl.ReservoirLottery;
 import database.DBHelper;
 import database.table.VoteTable;
 import database.table.SessionTable;
@@ -23,6 +24,7 @@ import reactor.core.publisher.Mono;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class Main {
 
@@ -63,6 +65,12 @@ public class Main {
         DBHelper.createTables();
         initCommands();
         VotingCloseTimer.startVotingCloseTimers();
+
+        double[] weights = {0.2, 0.2, 0.2, 0.2, 0.2};
+        for(int i = 0; i < 10; ++i) {
+
+        }
+
         startClient();
     }
 
@@ -126,6 +134,9 @@ public class Main {
             if(session == null)
                 return; // Current message is not active for voting.
 
+            if(!SessionTable.PHASE_VOTING.equals(session.getPhase()))
+                return; // Votes cannot be changed right now
+
             VoteTable.delete(session.getId(), user.getId().asString());
 
             String newMsg = session.getSessionString();
@@ -154,6 +165,9 @@ public class Main {
 
             if(session == null)
                 return; // Current message is not active for voting.
+
+            if(!SessionTable.PHASE_VOTING.equals(session.getPhase()))
+                return; // Votes cannot be changed right now
 
             VoteTable.insert(session.getId(), user.getId().asString());
 

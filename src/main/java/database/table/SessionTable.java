@@ -1,7 +1,6 @@
 package database.table;
 
 import database.DBHelper;
-import jdk.vm.ci.meta.Local;
 
 import java.sql.*;
 import java.time.LocalDate;
@@ -364,7 +363,7 @@ public class SessionTable extends BaseCols {
                 if(voteEndDateTime == null) {
                     res += "**Voting End**: How long do the players have to enter the raffle" +
                             " before the players get decided?\n" +
-                            "\tUse '!voteEnd YYYY-MM-DD HH-mm' (i. e. '!voteDate 2020-05-27 13:30') " +
+                            "\tUse '!voteEnd YYYY-MM-DD HH:mm' (i. e. '!voteEnd 2020-05-27 13:30') " +
                               "to set a date for when voting ends.\n";
                 }
                 if(dmComment == null) {
@@ -438,10 +437,12 @@ public class SessionTable extends BaseCols {
                     "You may not be able to enter the raffle otherwise.\n";
 
             assert(id != -1);
-            ArrayList<UserTable> votes = VoteTable.getVotes(id);
+            ArrayList<VoteTable> votes = VoteTable.getVotes(id);
             if(!votes.isEmpty()) {
                 res += "\nCurrently the following people have entered the raffle:\n";
-                for(UserTable user : votes) {
+                for(VoteTable vote : votes) {
+                    UserTable user = UserTable.getUserWithId(vote.getPlayerId());
+                    if(user == null) continue;
                     res += "**" + user.getUsername() + "**\n";
                 }
             } else {
@@ -449,8 +450,54 @@ public class SessionTable extends BaseCols {
             }
 
             return res;
+        } else if(PHASE_DONE.equals(phase)) {
+            UserTable dm = UserTable.getUserWithId(dmId);
+            if(dm == null)
+                return "DM with id " + dmId + " does not seem to exist.";
+
+            String res = dm.getUsername() + "#" + dm.getDiscriminator() + " has planned a session! Hurray!\n" +
+                    "The session will take place on the " + sessionDate.toString() + " with space for " + playerCount + " players.\n" +
+                    (dmComment == null ? "" : "Message from DM: \"" + dmComment + "\"\n") +
+                    "To join the raffle react to this message with :white_check_mark: .\n" +
+                    "Voting has closed!\n" +
+                    "The selected players participating in this session are the following:\n";
+
+            assert(id != -1);
+            ArrayList<VoteTable> votes = VoteTable.getVotes(id);
+            for(VoteTable vote : votes) {
+                if(!VoteTable.STATUS_ACCEPTED.equals(vote.getStatus()))
+                    continue;
+                UserTable user = UserTable.getUserWithId(vote.getPlayerId());
+                if(user == null) continue;
+                res += "**" + user.getUsername() + "**\n";
+            }
+            res += "\n";
+
+            if(votes.size() > playerCount) {
+                res += "The following players entered the raffle but were not chosen to play:\n";
+                for(VoteTable vote : votes) {
+                    if(!VoteTable.STATUS_DECLINED.equals(vote.getStatus()))
+                        continue;
+                    UserTable user = UserTable.getUserWithId(vote.getPlayerId());
+                    if(user == null) continue;
+                    res += "**" + user.getUsername() + "**\n";
+                }
+            }
+
+            return res;
         }
-        return "getSessionString when phase is not SETUP or PHASE_VOTING!";
+        return "getSessionString with unknown phase " + phase + "!";
     }
 
+    public int getPlayerCount() {
+        return playerCount;
+    }
+
+    public String getVoteMsgId() {
+        return voteMsgId;
+    }
+
+    public String getDmId() {
+        return dmId;
+    }
 }
